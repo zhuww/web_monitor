@@ -1,0 +1,18 @@
+# 网页获取和处理
+requests==2.31.0
+beautifulsoup4==4.12.3
+selenium==4.19.0
+webdriver-manager==4.0.1
+
+# 图像处理
+Pillow==10.3.0
+
+# AI模型调用
+openai==1.35.12
+
+# 配置管理
+python-dotenv==1.0.1
+configparser==5.0.2
+
+# 定时任务
+schedule==1.2.1
