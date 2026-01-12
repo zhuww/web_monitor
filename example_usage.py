@@ -13,7 +13,7 @@ def main():
     # 配置要监控的网站列表
     # 替换为您需要监控的实际网站
     monitor_urls = [
-        "https://quote.eastmoney.com/ZS000001.html",  # 示例网站
+        "https://quote.eastmoney.com/kcb/688018.html",  # 示例网站
         # 添加更多需要监控的网站
         # 例如: "http://your-monitoring-system.com/dashboard",
         #       "http://your-api-service.com/status",

@@ -3,12 +3,12 @@ import time
 import schedule
 import requests
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
 import io
 import os
+# 导入Pyppeteer
+from pyppeteer import launch
+import asyncio
 
 class WebMonitorAgent:
     def __init__(self, config_file='secret.cfg'):
@@ -35,6 +35,7 @@ class WebMonitorAgent:
                 http_client = httpx.Client(
                     timeout=30.0,
                     follow_redirects=True,
+                    verify=False,  # 禁用SSL证书验证
                 )
                 
                 # 处理API密钥和URL
@@ -63,7 +64,7 @@ class WebMonitorAgent:
         """获取网页内容，判断是简单网页还是复杂网页"""
         try:
             # 先尝试用requests获取
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=10, verify=False)
             response.raise_for_status()
             
             # 检查是否是静态内容
@@ -77,9 +78,9 @@ class WebMonitorAgent:
             if len(static_content) < 10000 and script_count < 10:
                 return 'text', static_content
             else:
-                # 复杂网页，尝试使用selenium截图
+                # 复杂网页，尝试使用Pyppeteer截图
                 try:
-                    print("尝试使用selenium获取网页截图...")
+                    print("尝试使用Pyppeteer获取网页截图...")
                     screenshot = self.capture_screenshot(url)
                     return 'image', screenshot
                 except Exception as e:
@@ -90,27 +91,58 @@ class WebMonitorAgent:
             print(f"获取网页失败: {e}")
             return 'error', str(e)
     
-    def capture_screenshot(self, url):
-        """使用selenium获取网页截图"""
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--no-sandbox')  # 添加此参数以避免权限问题
-        options.add_argument('--disable-dev-shm-usage')  # 添加此参数以避免内存问题
-        
+    async def capture_screenshot_pyppeteer(self, url):
+        """使用Pyppeteer获取网页截图（异步方法）"""
         try:
-            # 尝试安装并使用Chrome驱动
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-            try:
-                driver.get(url)
-                time.sleep(3)  # 等待页面加载
-                screenshot = driver.get_screenshot_as_png()
-                return screenshot
-            finally:
-                driver.quit()
+            # 启动Pyppeteer浏览器
+            browser = await launch(
+                headless=True,
+                args=[
+                    '--window-size=1920,1080',
+                    '--ignore-certificate-errors',
+                    '--allow-running-insecure-content',
+                    '--disable-extensions',
+                    '--disable-popup-blocking',
+                    '--disable-default-apps',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ],
+                executablePath=r'C:\Program Files\Google\Chrome\Application\chrome.exe'  # 手动指定Chrome路径
+            )
+            
+            # 创建新页面
+            page = await browser.newPage()
+            
+            # 设置视图大小
+            await page.setViewport({'width': 1920, 'height': 1080})
+            
+            # 导航到URL（忽略SSL错误）
+            await page.goto(url, {'waitUntil': 'networkidle0', 'timeout': 30000})
+            
+            # 等待页面加载完成 - 使用sleep代替waitForTimeout
+            await asyncio.sleep(3)
+            
+            # 截取整个页面的截图
+            screenshot = await page.screenshot({'fullPage': True, 'type': 'png'})
+            
+            # 关闭浏览器
+            await browser.close()
+            
+            return screenshot
         except Exception as e:
-            print(f"Chrome驱动或Selenium出错: {e}")
+            print(f"Pyppeteer截图出错: {e}")
+            raise
+    
+    def capture_screenshot(self, url):
+        """直接使用Pyppeteer获取网页截图"""
+        try:
+            print("使用Pyppeteer获取网页截图...")
+            # 运行异步函数
+            screenshot = asyncio.run(self.capture_screenshot_pyppeteer(url))
+            return screenshot
+        except Exception as e:
+            print(f"Pyppeteer截图失败: {e}")
             raise
     
     def analyze_text(self, text):
@@ -236,7 +268,7 @@ if __name__ == "__main__":
     # 示例用法
     agent = WebMonitorAgent()
     
-    # 要监控的网站列表
+    # 要监控的网站列表 - 使用一个简单的网站进行测试
     monitor_urls = [
         "http://example.com",  # 示例网站，实际使用时替换为需要监控的网站
         # 添加更多需要监控的网站
@@ -244,19 +276,25 @@ if __name__ == "__main__":
     
     # 启动监控，每60秒检查一次
     print("\n" + "="*80)
-    print("AI监控Agent测试")
+    print("AI监控Agent测试 - 截图功能")
     print("="*80)
-    print(f"监控网站: {monitor_urls}")
-    print(f"监控间隔: 60秒")
-    print(f"AI模型状态: {'已初始化' if agent.silicon_flow_client else '未初始化（使用模拟结果）'}")
+    print(f"测试网站: {monitor_urls}")
     print("="*80)
     
     try:
-        # 只运行一次检查，然后退出（测试用）
+        # 单独测试截图功能
+        print("\n开始测试截图功能...")
         for url in monitor_urls:
-            agent.check_website(url)
+            print(f"\n测试网站: {url}")
+            screenshot = agent.capture_screenshot(url)
+            print(f"截图成功，大小: {len(screenshot)} 字节")
+            
+            # 保存截图到文件（可选）
+            screenshot_path = "test_screenshot.png"
+            with open(screenshot_path, "wb") as f:
+                f.write(screenshot)
+            print(f"截图已保存到: {screenshot_path}")
         
-        print("\n测试完成！实际使用时将持续运行监控任务。")
-        print("要启动完整的监控，请修改代码，调用agent.start_monitoring()")
+        print("\n截图功能测试完成！")
     except Exception as e:
         print(f"测试时出错: {e}")
