@@ -76,8 +76,19 @@ class BasicMonitor:
         """直接使用Pyppeteer获取网页截图"""
         try:
             print("使用Pyppeteer获取网页截图...")
-            # 运行异步函数
-            screenshot = asyncio.run(self.capture_screenshot_pyppeteer(url))
+            
+            # 检查当前是否有已运行的事件循环
+            try:
+                loop = asyncio.get_running_loop()
+                # 如果有已运行的事件循环，使用现有的事件循环
+                print("检测到已运行的事件循环，使用现有的事件循环...")
+                # 在当前事件循环中运行协程
+                screenshot = loop.run_until_complete(self.capture_screenshot_pyppeteer(url))
+            except RuntimeError:
+                # 没有已运行的事件循环，使用asyncio.run
+                print("创建新的事件循环...")
+                screenshot = asyncio.run(self.capture_screenshot_pyppeteer(url))
+            
             print("Pyppeteer截图成功，保存为temp_screenshot.png")
             # 保存截图为文件
             image = Image.open(io.BytesIO(screenshot))

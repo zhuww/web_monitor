@@ -39,26 +39,26 @@ class WebMonitorAgent:
                 )
                 
                 # 处理API密钥和URL
-                silicon_flow_api_key = self.config.get('silicon-flow', 'API_KEY').strip('"')
-                silicon_flow_base_url = self.config.get('silicon-flow', 'BASE_URL').strip('"')
+                api_key = self.config.get('silicon-flow', 'API_KEY').strip('"')
+                base_url = self.config.get('silicon-flow', 'BASE_URL').strip('"')
                 
-                print(f"处理后的Silicon Flow API Key: {silicon_flow_api_key[:20]}...")
-                print(f"处理后的Base URL: {silicon_flow_base_url}")
+                print(f"处理后的API Key: {api_key[:20]}...")
+                print(f"处理后的Base URL: {base_url}")
                 
-                # 设置Silicon Flow客户端（同时用于文本和图像分析）
-                self.silicon_flow_client = OpenAI(
-                    api_key=silicon_flow_api_key,
-                    base_url=silicon_flow_base_url,
+                # 设置AI客户端（同时用于文本和图像分析）
+                self.ai_client = OpenAI(
+                    api_key=api_key,
+                    base_url=base_url,
                     http_client=http_client
                 )
-                print("Silicon Flow客户端设置完成")
+                print("AI客户端设置完成")
             except Exception as e:
                 print(f"初始化OpenAI客户端失败: {e}")
                 print("将使用模拟分析结果")
-                self.silicon_flow_client = None
+                self.ai_client = None
         except Exception as e:
             print(f"设置AI模型客户端时出错: {e}")
-            self.silicon_flow_client = None
+            self.ai_client = None
     
     def get_webpage(self, url):
         """获取网页内容，判断是简单网页还是复杂网页"""
@@ -138,19 +138,33 @@ class WebMonitorAgent:
         """直接使用Pyppeteer获取网页截图"""
         try:
             print("使用Pyppeteer获取网页截图...")
-            # 运行异步函数
-            screenshot = asyncio.run(self.capture_screenshot_pyppeteer(url))
+            
+            # 检查当前是否有已运行的事件循环
+            try:
+                loop = asyncio.get_running_loop()
+                # 如果有已运行的事件循环，使用create_task或run_coroutine_threadsafe
+                print("检测到已运行的事件循环，使用现有的事件循环...")
+                # 在当前事件循环中运行协程
+                screenshot = loop.run_until_complete(self.capture_screenshot_pyppeteer(url))
+            except RuntimeError:
+                # 没有已运行的事件循环，使用asyncio.run
+                print("创建新的事件循环...")
+                screenshot = asyncio.run(self.capture_screenshot_pyppeteer(url))
+                
             return screenshot
         except Exception as e:
             print(f"Pyppeteer截图失败: {e}")
             raise
     
     def analyze_text(self, text):
-        """使用Silicon Flow推理模型分析文本内容"""
+        """使用AI推理模型分析文本内容"""
         try:
-            if not self.silicon_flow_client:
+            if not self.ai_client:
                 # AI模型未初始化，返回模拟结果
-                return "【模拟分析结果】\n页面正常，未发现告警信息。\n\n此为模拟结果，实际使用时将调用AI模型进行分析。"
+                return """【模拟分析结果】
+页面正常，未发现告警信息。
+
+此为模拟结果，实际使用时将调用AI模型进行分析。"""
             
             prompt = f"""请分析以下网页内容，重点关注是否存在告警、错误等异常信息。
 如果发现异常，请生成详细的告警报告，包括：
@@ -168,10 +182,10 @@ class WebMonitorAgent:
             # 获取模型名称和温度参数
             model_name = self.config.get('silicon-flow', 'REASONING_MODEL').strip('"')
             temperature = float(self.config.get('silicon-flow', 'temperature', fallback='0.7'))
-            print(f"正在使用Silicon Flow模型: {model_name}")
+            print(f"正在使用AI模型: {model_name}")
             print(f"温度参数: {temperature}")
             
-            response = self.silicon_flow_client.chat.completions.create(
+            response = self.ai_client.chat.completions.create(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": "你是一个专业的系统监控分析助手，善于从文本中识别告警信息。"},
@@ -185,11 +199,14 @@ class WebMonitorAgent:
             return f"分析文本时出错: {e}\n\n此为错误信息，实际使用时将调用AI模型进行分析。"
     
     def analyze_image(self, image_data):
-        """使用Silicon Flow视觉模型分析截图"""
+        """使用AI视觉模型分析截图"""
         try:
-            if not self.silicon_flow_client:
+            if not self.ai_client:
                 # AI模型未初始化，返回模拟结果
-                return "【模拟分析结果】\n页面正常，未发现告警信息。\n\n此为模拟结果，实际使用时将调用AI模型进行分析。"
+                return """【模拟分析结果】
+页面正常，未发现告警信息。
+
+此为模拟结果，实际使用时将调用AI模型进行分析。"""
             
             image = Image.open(io.BytesIO(image_data))
             
@@ -200,11 +217,11 @@ class WebMonitorAgent:
             # 获取模型名称和温度参数
             model_name = self.config.get('silicon-flow', 'VISUAL_MODEL').strip('"')
             temperature = float(self.config.get('silicon-flow', 'temperature', fallback='0.7'))
-            print(f"正在使用Silicon Flow视觉模型: {model_name}")
+            print(f"正在使用AI视觉模型: {model_name}")
             print(f"温度参数: {temperature}")
             
             with open(temp_path, 'rb') as f:
-                response = self.silicon_flow_client.chat.completions.create(
+                response = self.ai_client.chat.completions.create(
                     model=model_name,
                     messages=[
                         {"role": "system", "content": "你是一个专业的系统监控分析助手，善于从截图中识别告警信息。"},
